@@ -7,13 +7,35 @@ export default async function handler(request) {
 
   if (!symbol) return new Response(JSON.stringify({ ok: false, error: 'No symbol' }), { status: 400, headers: cors });
 
+  const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
   const yhHeaders = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'User-Agent': UA,
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'en-US,en;q=0.9',
     'Referer': 'https://finance.yahoo.com/',
     'Origin': 'https://finance.yahoo.com',
   };
+
+  // Yahoo's quoteSummary (v10) requires a session cookie + crumb token.
+  // Without it, requests return 401 "Invalid Crumb". This fetches both
+  // in one round-trip: hit finance.yahoo.com to get the "A1"/"A3" cookies,
+  // then call getcrumb with those cookies to obtain the crumb token.
+  async function getCrumb() {
+    // Step 1: visit Yahoo to receive session cookies
+    const r1 = await fetch('https://fc.yahoo.com', { headers: { 'User-Agent': UA }, redirect: 'manual' });
+    const setCookie = r1.headers.get('set-cookie') || '';
+    // Cloudflare Workers/Deno fetch only exposes one combined set-cookie header;
+    // extract cookie pairs (name=value) before the first semicolon of each.
+    const cookies = setCookie.split(/,(?=[^;]+=[^;]+)/).map(c => c.split(';')[0].trim()).filter(Boolean).join('; ');
+
+    // Step 2: request the crumb using those cookies
+    const r2 = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', {
+      headers: { 'User-Agent': UA, 'Cookie': cookies }
+    });
+    if (!r2.ok) return { crumb: null, cookies };
+    const crumb = (await r2.text()).trim();
+    return { crumb, cookies };
+  }
 
   try {
     if (mode === 'search') {
@@ -24,7 +46,12 @@ export default async function handler(request) {
 
     if (mode === 'fundamentals') {
       const modules = 'price,summaryDetail,defaultKeyStatistics,financialData,assetProfile,calendarEvents';
-      const r = await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}&formatted=false`, { headers: yhHeaders });
+      const { crumb, cookies } = await getCrumb();
+
+      const qsUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules}&formatted=false`
+        + (crumb ? `&crumb=${encodeURIComponent(crumb)}` : '');
+
+      const r = await fetch(qsUrl, { headers: { ...yhHeaders, ...(cookies ? { Cookie: cookies } : {}) } });
       if (!r.ok) throw new Error(`YH ${r.status}`);
       const d = await r.json();
       const result = d?.quoteSummary?.result?.[0];
@@ -32,6 +59,7 @@ export default async function handler(request) {
       return new Response(JSON.stringify({ ok: true, data: result }), { headers: cors });
     }
 
+    // mode=quote — v8 chart meta, no auth required
     const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`, { headers: yhHeaders });
     if (!r.ok) throw new Error(`YH ${r.status}`);
     const d = await r.json();
@@ -45,6 +73,4 @@ export default async function handler(request) {
 }
 
 // Required: declares the path this edge function responds to.
-// Netlify needs this inline export — the netlify.toml [[edge_functions]]
-// block alone is not always sufficient for the function to register.
 export const config = { path: "/api/quote" };
