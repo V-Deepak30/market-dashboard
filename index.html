@@ -599,7 +599,7 @@ async function loadCurated(){
 function buildTape(){
   const items=[...trending,...custom,...CURATED.filter(t=>['NVDA','AAPL','MSFT','TSLA','RKLB','DRAM','SHOP.TO','RY.TO','VOO','CRWD'].includes(t.k))];
   const seen=new Set();const uniq=items.filter(t=>{if(seen.has(t.k))return false;seen.add(t.k);return true;});
-  const h=uniq.map(t=>{const p=t.ch>=0;const c=p?'var(--Gm)':'var(--Rm)';return`<span class="ti"><span style="font-weight:700;color:var(--txt)">${t.k}</span><span style="color:${c}">$${t.p.toFixed(2)}</span><span style="font-size:11px;color:${c}">${p?'▲':'▼'}${Math.abs(t.ch).toFixed(2)}%</span></span>`;}).join('');
+  const h=uniq.map(t=>{const p=t.ch>=0;const c=p?'var(--Gm)':'var(--Rm)';return`<span class="tape-item"><span style="font-weight:700;color:var(--txt)">${t.k}</span><span style="color:${c}">$${t.p.toFixed(2)}</span><span style="font-size:11px;color:${c}">${p?'▲':'▼'}${Math.abs(t.ch).toFixed(2)}%</span></span>`;}).join('');
   document.getElementById('tape').innerHTML=h+h;
 }
 const skels=n=>Array(n).fill(0).map(()=>`<div class="skel"><div class="skl" style="width:60%"></div><div class="skl" style="width:40%"></div><div class="skl" style="width:80%"></div></div>`).join('');
