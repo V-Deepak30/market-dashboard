@@ -43,3 +43,8 @@ export default async function handler(request) {
     return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 502, headers: cors });
   }
 }
+
+// Required: declares the path this edge function responds to.
+// Netlify needs this inline export — the netlify.toml [[edge_functions]]
+// block alone is not always sufficient for the function to register.
+export const config = { path: "/api/quote" };
